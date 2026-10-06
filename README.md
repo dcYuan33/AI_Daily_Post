@@ -39,6 +39,7 @@ Gmail 推荐使用开启两步验证后的 App Password，不要使用主密码�
 本项目使用 [uv](https://docs.astral.sh/uv/) 管理 Python 版本、虚拟环境和依赖，不直接使用 `pip install`。
 
 ```bash
+uv lock    # 首次或依赖变更时执行；网络可用后提交生成的 uv.lock
 uv sync
 cp .env.example .env
 set -a; source .env; set +a
