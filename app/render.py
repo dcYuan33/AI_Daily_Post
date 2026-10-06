@@ -3,7 +3,10 @@ from __future__ import annotations
 import html
 from pathlib import Path
 
-import markdown
+try:
+    import markdown
+except ImportError:  # Keeps date/config unit tests runnable before dependencies are installed.
+    markdown = None
 
 from .models import DailyReport
 
@@ -38,7 +41,10 @@ def render_markdown(report: DailyReport) -> str:
 
 def render_html(report: DailyReport) -> str:
     md = render_markdown(report)
-    body = markdown.markdown(md, extensions=["extra", "sane_lists"])
+    if markdown is not None:
+        body = markdown.markdown(md, extensions=["extra", "sane_lists"])
+    else:
+        body = "<pre>" + html.escape(md) + "</pre>"
     return f"""<!doctype html>
 <html lang="zh-CN"><head><meta charset="utf-8"><title>{html.escape(report.title)}</title>
 <style>body{{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;line-height:1.7;max-width:860px;margin:32px auto;padding:0 20px;color:#222}}h1{{border-bottom:1px solid #ddd;padding-bottom:12px}}h2{{margin-top:32px}}h3{{margin-top:26px}}a{{color:#1769aa}}li{{margin:8px 0}}</style>

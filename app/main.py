@@ -5,11 +5,7 @@ import logging
 import os
 from datetime import date, datetime, timedelta
 
-from .collect import collect_candidates
 from .config import load_settings
-from .llm import generate_report
-from .notify import fetch_juya_latest, juya_telegram_summary, report_telegram_summary, send_gmail, send_telegram
-from .render import save_report
 
 logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
 logger = logging.getLogger(__name__)
@@ -26,6 +22,11 @@ def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--report-date", help="YYYY-MM-DD; defaults to previous day in REPORT_TIMEZONE")
     args = parser.parse_args()
+    from .collect import collect_candidates
+    from .llm import generate_report
+    from .notify import fetch_juya_latest, juya_telegram_summary, report_telegram_summary, send_gmail, send_telegram
+    from .render import save_report
+
     settings = load_settings()
     target_date = resolve_report_date(settings, args.report_date)
     logger.info("Generating AI daily report for %s", target_date)

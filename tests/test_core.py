@@ -2,6 +2,7 @@ import tempfile
 import unittest
 from datetime import date
 from pathlib import Path
+from zoneinfo import ZoneInfo
 
 from app.main import resolve_report_date
 from app.models import DailyReport, ReportItem
@@ -9,7 +10,7 @@ from app.render import render_markdown, save_report
 
 
 class FakeSettings:
-    timezone = __import__("zoneinfo").zoneinfo.ZoneInfo("Asia/Shanghai")
+    timezone = ZoneInfo("Asia/Shanghai")
 
 
 class CoreTests(unittest.TestCase):
