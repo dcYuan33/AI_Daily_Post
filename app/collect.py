@@ -85,7 +85,12 @@ def fetch_page(url: str) -> tuple[str, str, datetime | None]:
 
 
 def _rss_candidates(source: dict, target_date: date, limit: int = 40) -> list[Candidate]:
-    parsed = feedparser.parse(source["rss"])
+    try:
+        response = requests.get(source["rss"], headers={"User-Agent": USER_AGENT}, timeout=TIMEOUT)
+        response.raise_for_status()
+        parsed = feedparser.parse(response.content)
+    except requests.RequestException:
+        return []
     result: list[Candidate] = []
     for entry in parsed.entries[:limit]:
         published = _parse_datetime(entry.get("published") or entry.get("updated"))
