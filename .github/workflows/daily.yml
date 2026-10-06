@@ -26,14 +26,17 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Set up Python
-        uses: actions/setup-python@v5
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v6
         with:
-          python-version: "3.12"
-          cache: pip
+          version: "latest"
+          enable-cache: true
+
+      - name: Set up Python
+        run: uv python install 3.12
 
       - name: Install dependencies
-        run: pip install -r requirements.txt
+        run: uv sync
 
       - name: Generate and send
         env:
@@ -47,7 +50,7 @@ jobs:
           GMAIL_TO: ${{ secrets.GMAIL_TO }}
           REPORT_TIMEZONE: Asia/Shanghai
           REPORT_DATE: ${{ inputs.report_date }}
-        run: python -m app
+        run: uv run python -m app
 
       - name: Commit generated report
         run: |

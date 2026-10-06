@@ -10,7 +10,8 @@
 - 生成 Markdown 和 HTML；
 - Telegram：自己的日报摘要 + 橘鸦最新日报摘要/链接；
 - Gmail：自己的完整 HTML 日报和 Markdown 附件；
-- GitHub Actions 手动运行时可以指定 `report_date`。
+- GitHub Actions 手动运行时可以指定 `report_date`；
+- 使用 `pyproject.toml` 和 uv 管理 GitHub Actions 与本地依赖。
 
 ## 首次配置
 
@@ -35,19 +36,19 @@ Gmail 推荐使用开启两步验证后的 App Password，不要使用主密码�
 
 ## 本地运行
 
+本项目使用 [uv](https://docs.astral.sh/uv/) 管理 Python 版本、虚拟环境和依赖，不直接使用 `pip install`。
+
 ```bash
-python3 -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.txt
+uv sync
 cp .env.example .env
 set -a; source .env; set +a
-python -m app --report-date 2026-10-05
+uv run python -m app --report-date 2026-10-05
 ```
 
 本地测试只验证纯函数，不需要网络或密钥：
 
 ```bash
-python -m unittest discover -s tests -v
+uv run python -m unittest discover -s tests -v
 ```
 
 ## 运行时间和日期窗口
