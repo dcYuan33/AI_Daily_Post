@@ -2,7 +2,8 @@ from __future__ import annotations
 
 import html
 import re
-from datetime import date, datetime, time, timedelta
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from datetime import date, datetime, time
 from email.utils import parsedate_to_datetime
 from urllib.parse import urljoin
 
@@ -14,7 +15,7 @@ from bs4 import BeautifulSoup
 from .models import Candidate
 
 USER_AGENT = "ai-daily/0.1 (+https://github.com/)"
-TIMEOUT = 20
+TIMEOUT = 10
 
 
 def load_sources(path):
@@ -56,14 +57,31 @@ def _article_text(soup: BeautifulSoup) -> str:
     return "\n".join(p for p in paragraphs if len(p) >= 30)[:12000]
 
 
-def fetch_page(url: str) -> tuple[str, str]:
+def _page_date(soup: BeautifulSoup) -> datetime | None:
+    for selector in (
+        "meta[property='article:published_time']",
+        "meta[property='og:published_time']",
+        "meta[name='date']",
+        "meta[name='pubdate']",
+        "time[datetime]",
+    ):
+        node = soup.select_one(selector)
+        if node:
+            value = node.get("content") or node.get("datetime") or node.get_text(" ", strip=True)
+            parsed = _parse_datetime(value)
+            if parsed:
+                return parsed
+    return None
+
+
+def fetch_page(url: str) -> tuple[str, str, datetime | None]:
     try:
         response = requests.get(url, headers={"User-Agent": USER_AGENT}, timeout=TIMEOUT)
         response.raise_for_status()
         soup = BeautifulSoup(response.text, "html.parser")
-        return response.url, _article_text(soup)
+        return response.url, _article_text(soup), _page_date(soup)
     except requests.RequestException:
-        return url, ""
+        return url, "", None
 
 
 def _rss_candidates(source: dict, target_date: date, limit: int = 40) -> list[Candidate]:
@@ -121,13 +139,23 @@ def _webpage_candidates(source: dict, target_date: date, limit: int = 20) -> lis
     return candidates
 
 
-def enrich_candidates(candidates: list[Candidate], max_articles: int = 50) -> list[Candidate]:
+def enrich_candidates(candidates: list[Candidate], max_articles: int = 60) -> list[Candidate]:
+    # Landing pages can expose many links. Bound and parallelize article requests so a
+    # single slow source cannot consume the whole GitHub Actions job.
+    selected = candidates[:max_articles]
     enriched: list[Candidate] = []
-    for candidate in candidates[:max_articles]:
-        final_url, content = fetch_page(candidate.url)
-        candidate.url = final_url
-        candidate.content = content
-        enriched.append(candidate)
+    with ThreadPoolExecutor(max_workers=12) as executor:
+        futures = {executor.submit(fetch_page, candidate.url): candidate for candidate in selected}
+        for future in as_completed(futures):
+            candidate = futures[future]
+            try:
+                final_url, content, published_at = future.result()
+            except Exception:
+                final_url, content, published_at = candidate.url, "", None
+            candidate.url = final_url
+            candidate.content = content
+            candidate.published_at = candidate.published_at or published_at
+            enriched.append(candidate)
     return enriched
 
 

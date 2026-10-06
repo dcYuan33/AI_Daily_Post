@@ -48,17 +48,20 @@ def generate_report(settings, target_date: date, candidates: list[Candidate]) ->
         result = json.loads(response.read().decode("utf-8"))
     content = result["choices"][0]["message"]["content"]
     parsed = _extract_json(content)
+    allowed_sources = {}
+    for candidate in candidates:
+        for url in (candidate.url, candidate.source_url):
+            if url:
+                allowed_sources[url] = {
+                    "name": candidate.source_name,
+                    "tier": candidate.tier,
+                    "url": url,
+                }
     items = []
     for raw in parsed.get("items", []):
-        sources = [
-            {
-                "name": str(source.get("name", "来源")),
-                "tier": str(source.get("tier", "C")),
-                "url": str(source.get("url", "")),
-            }
-            for source in raw.get("sources", [])
-            if source.get("url")
-        ]
+        # Never trust an LLM-invented URL or tier. Only retain URLs present in the
+        # fetched candidate set, and use the collector's source metadata.
+        sources = [allowed_sources[source["url"]] for source in raw.get("sources", []) if source.get("url") in allowed_sources]
         if not raw.get("title") or not raw.get("summary") or not sources:
             continue
         items.append(

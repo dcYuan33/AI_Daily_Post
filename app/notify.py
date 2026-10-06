@@ -61,7 +61,9 @@ def report_telegram_summary(report: DailyReport) -> str:
 
 
 def fetch_juya_latest() -> dict | None:
-    parsed = feedparser.parse(JUYA_RSS_URL)
+    response = requests.get(JUYA_RSS_URL, headers={"User-Agent": "ai-daily/0.1"}, timeout=20)
+    response.raise_for_status()
+    parsed = feedparser.parse(response.content)
     if not parsed.entries:
         return None
     entry = parsed.entries[0]
