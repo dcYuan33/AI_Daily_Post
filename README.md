@@ -1,4 +1,4 @@
-# AI Daily Briefing
+# AI Daily Post
 
 无服务器的 AI 日报：由 GitHub Actions 每天运行，使用 `ai-weekly-briefing` 的 A/B/C 信源规则，Telegram 发送摘要，并通过 GitHub Pages 展示完整日报。
 
