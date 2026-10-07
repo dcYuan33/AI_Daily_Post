@@ -24,8 +24,9 @@ def main() -> int:
     args = parser.parse_args()
     from .collect import collect_candidates
     from .llm import generate_report
-    from .notify import fetch_juya_latest, juya_telegram_summary, report_telegram_summary, send_gmail, send_telegram
+    from .notify import report_telegram_summary, send_telegram
     from .render import save_report
+    from .site import build_site
 
     settings = load_settings()
     target_date = resolve_report_date(settings, args.report_date)
@@ -35,32 +36,13 @@ def main() -> int:
     logger.info("Collected %d candidates", len(candidates))
     report = generate_report(settings, target_date, candidates)
     markdown_path, html_path = save_report(report, settings.root)
+    build_site(report, settings.root)
     logger.info("Saved %s and %s", markdown_path, html_path)
 
-    # Each notification is isolated so a temporary failure in one channel does not suppress the others.
-    try:
-        send_telegram(settings, report_telegram_summary(report))
-        logger.info("Sent own report summary to Telegram")
-    except Exception:
-        logger.exception("Failed to send own report to Telegram")
-
-    juya_url = None
-    try:
-        issue = fetch_juya_latest()
-        if issue:
-            juya_url = issue["url"]
-            send_telegram(settings, juya_telegram_summary(issue))
-            logger.info("Sent Juya issue to Telegram")
-        else:
-            logger.warning("No Juya RSS issue found")
-    except Exception:
-        logger.exception("Failed to fetch/send Juya issue")
-
-    try:
-        send_gmail(settings, report, html_path, markdown_path, juya_url)
-        logger.info("Sent full report to Gmail")
-    except Exception:
-        logger.exception("Failed to send full report to Gmail")
+    site_url = os.getenv("SITE_URL", "").rstrip("/")
+    issue_url = f"{site_url}/issues/{report.report_date}/" if site_url else ""
+    send_telegram(settings, report_telegram_summary(report, issue_url))
+    logger.info("Sent report summary to Telegram")
 
     return 0
 

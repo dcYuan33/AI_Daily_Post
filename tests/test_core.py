@@ -7,6 +7,7 @@ from zoneinfo import ZoneInfo
 from app.main import resolve_report_date
 from app.models import DailyReport, ReportItem
 from app.render import render_markdown, save_report
+from app.site import build_site
 
 
 class FakeSettings:
@@ -35,6 +36,29 @@ class CoreTests(unittest.TestCase):
         self.assertIn("测试新闻", output)
         self.assertIn("OpenAI News（A）", output)
         self.assertIn("https://example.com/news", output)
+
+
+    def test_build_site(self):
+        report = DailyReport(
+            "AI 日报｜2026-10-06",
+            "2026-10-06",
+            "2026-10-07T09:17:00+08:00",
+            [ReportItem(
+                title="测试新闻",
+                time="2026-10-06",
+                category="模型与研究",
+                summary="这是测试摘要。",
+                sources=[{"name": "OpenAI News", "tier": "A", "url": "https://example.com/news"}],
+            )],
+        )
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            build_site(report, root)
+            self.assertTrue((root / "site/index.html").exists())
+            self.assertTrue((root / "site/archive.html").exists())
+            issue = root / "site/issues/2026-10-06/index.html"
+            self.assertTrue(issue.exists())
+            self.assertIn("../../assets/style.css", issue.read_text(encoding="utf-8"))
 
     def test_save_report(self):
         report = DailyReport("AI 日报｜2026-10-05", "2026-10-05", "now", [])

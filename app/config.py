@@ -18,19 +18,8 @@ class Settings:
     ai_model: str
     telegram_bot_token: str
     telegram_chat_id: str
-    gmail_username: str
-    gmail_app_password: str
-    gmail_to: str
     sources_config: Path
     prompt_file: Path
-
-    @property
-    def smtp_server(self) -> str:
-        return os.getenv("GMAIL_SMTP_SERVER", "smtp.gmail.com")
-
-    @property
-    def smtp_port(self) -> int:
-        return int(os.getenv("GMAIL_SMTP_PORT", "465"))
 
 
 def _path(value: str, default: str) -> Path:
@@ -47,9 +36,6 @@ def load_settings() -> Settings:
         ai_model=os.getenv("AI_MODEL", ""),
         telegram_bot_token=os.getenv("TELEGRAM_BOT_TOKEN", ""),
         telegram_chat_id=os.getenv("TELEGRAM_CHAT_ID", ""),
-        gmail_username=os.getenv("GMAIL_USERNAME", ""),
-        gmail_app_password=os.getenv("GMAIL_APP_PASSWORD", ""),
-        gmail_to=os.getenv("GMAIL_TO", ""),
         sources_config=_path(os.getenv("SOURCES_CONFIG", "config/sources.yaml"), "config/sources.yaml"),
         prompt_file=_path(os.getenv("PROMPT_FILE", "prompts/ai-daily.md"), "prompts/ai-daily.md"),
     )
