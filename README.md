@@ -2,6 +2,8 @@
 
 无服务器的 AI 日报：由 GitHub Actions 每天运行，使用 `ai-weekly-briefing` 的 A/B/C 信源规则，Telegram 发送摘要，并通过 GitHub Pages 展示完整日报。
 
+最终交付方式是：**Telegram 只接收摘要，GitHub Pages 展示完整内容**。本项目不推送 Juya AI 日报，也不发送 Gmail 邮件。
+
 ## 功能
 
 - 前一天自然日的 AI 新闻采集和中文日报生成；
@@ -10,8 +12,6 @@
 - 生成 Markdown 和 HTML；
 - Telegram：发送自己的日报摘要和 GitHub Pages 完整日报链接；
 - GitHub Pages：提供首页、日报归档、日期详情页、搜索和深色模式；
-- 不再推送 Juya AI 日报；
-- 不再发送 Gmail；
 - Python 使用 `uv` 管理；
 - GitHub Actions 手动运行时可以指定 `report_date`。
 
