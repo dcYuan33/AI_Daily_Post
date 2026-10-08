@@ -10,6 +10,11 @@ on:
         description: "Report date YYYY-MM-DD; empty means previous day in Asia/Shanghai"
         required: false
         type: string
+      site_only:
+        description: "Only rebuild and deploy GitHub Pages; do not collect news or send Telegram"
+        required: false
+        type: boolean
+        default: false
 
 permissions:
   contents: write
@@ -41,9 +46,10 @@ jobs:
         run: uv python install 3.12
 
       - name: Install dependencies
-        run: uv sync
+        run: uv sync --locked
 
       - name: Generate report and site
+        if: ${{ inputs.site_only != true }}
         env:
           AI_API_KEY: ${{ secrets.AI_API_KEY }}
           AI_BASE_URL: ${{ secrets.AI_BASE_URL }}
@@ -53,7 +59,11 @@ jobs:
           REPORT_TIMEZONE: Asia/Shanghai
           REPORT_DATE: ${{ inputs.report_date }}
           SITE_URL: https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}
-        run: uv run python -m app
+        run: uv run --locked python -m app
+
+      - name: Rebuild site only
+        if: ${{ inputs.site_only == true }}
+        run: uv run --locked python -m app.site
 
       - name: Commit generated report and site
         run: |

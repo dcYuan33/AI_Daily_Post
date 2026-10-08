@@ -11,7 +11,7 @@
 - RSS 优先，网页栏目作为候选，文章原文作为核验输入；
 - 生成 Markdown 和 HTML；
 - Telegram：发送自己的日报摘要和 GitHub Pages 完整日报链接；
-- GitHub Pages：提供首页、日报归档、日期详情页、搜索和深色模式；
+- GitHub Pages：提供类似 Juya Daily 的阅读器布局：首页直接展示最新完整日报，左侧日期归档、全文搜索、目录、阅读进度和多种阅读主题；
 - Python 使用 `uv` 管理；
 - GitHub Actions 手动运行时可以指定 `report_date`。
 
@@ -30,6 +30,8 @@ TELEGRAM_CHAT_ID
 
 3. 在 Repository Settings → Pages 中将部署方式设置为 **GitHub Actions**（第一次运行 Workflow 后也可以在这里确认）。
 4. 先使用 `workflow_dispatch` 手动运行，填写 `report_date`，确认 Telegram 和 Pages 后再等待定时任务。
+
+如果只修改了页面样式、不希望重新采集新闻或重复发送 Telegram，可以在 `workflow_dispatch` 中勾选 `site_only`。它只会读取仓库里已经保存的 `site/issues/*/data.json`，重新生成并部署 GitHub Pages。
 
 ## 本地运行
 

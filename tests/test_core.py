@@ -1,3 +1,4 @@
+import json
 import tempfile
 import unittest
 from datetime import date
@@ -7,7 +8,7 @@ from zoneinfo import ZoneInfo
 from app.main import resolve_report_date
 from app.models import DailyReport, ReportItem
 from app.render import render_markdown, save_report
-from app.site import build_site
+from app.site import build_site, rebuild_site
 
 
 class FakeSettings:
@@ -59,6 +60,46 @@ class CoreTests(unittest.TestCase):
             issue = root / "site/issues/2026-10-06/index.html"
             self.assertTrue(issue.exists())
             self.assertIn("../../assets/style.css", issue.read_text(encoding="utf-8"))
+
+    def test_reader_escapes_content_and_rejects_unsafe_sources(self):
+        report = DailyReport(
+            "AI 日报｜2026-10-06", "2026-10-06", "now",
+            [ReportItem(
+                title="<script>alert(1)</script>", time="2026-10-06", category="测试",
+                summary="摘要 <b>不应被当作 HTML</b>",
+                sources=[
+                    {"name": "恶意", "tier": "A", "url": "javascript:alert(1)"},
+                    {"name": "安全来源", "tier": "B", "url": "https://example.com"},
+                ],
+            )],
+        )
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            build_site(report, root)
+            page = (root / "site/index.html").read_text(encoding="utf-8")
+            self.assertIn("&lt;script&gt;alert(1)&lt;/script&gt;", page)
+            self.assertNotIn("javascript:alert(1)", page)
+            self.assertIn("https://example.com", page)
+
+    def test_rebuild_site_preserves_multiple_issue_archive(self):
+        first = DailyReport("AI 日报｜2026-10-06", "2026-10-06", "now", [])
+        second = DailyReport("AI 日报｜2026-10-07", "2026-10-07", "now", [])
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            build_site(first, root)
+            issue_dir = root / "site/issues/2026-10-07"
+            issue_dir.mkdir(parents=True)
+            (issue_dir / "data.json").write_text(
+                json.dumps({
+                    "title": second.title, "report_date": second.report_date,
+                    "generated_at": second.generated_at, "items": [],
+                }), encoding="utf-8"
+            )
+            original = (root / "site/issues/2026-10-06/data.json").read_text(encoding="utf-8")
+            rebuild_site(root)
+            self.assertIn("2026-10-07", (root / "site/index.html").read_text(encoding="utf-8"))
+            self.assertIn("issues/2026-10-06/", (root / "site/issues/2026-10-07/index.html").read_text(encoding="utf-8"))
+            self.assertEqual(original, (root / "site/issues/2026-10-06/data.json").read_text(encoding="utf-8"))
 
     def test_save_report(self):
         report = DailyReport("AI 日报｜2026-10-05", "2026-10-05", "now", [])
