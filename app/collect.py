@@ -1,11 +1,15 @@
 from __future__ import annotations
 
 import html
+import json
+import logging
 import re
+from collections import Counter, deque
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import date, datetime, time
 from email.utils import parsedate_to_datetime
-from urllib.parse import urljoin
+from urllib.parse import urljoin, urlsplit
+from zoneinfo import ZoneInfo
 
 import feedparser
 import requests
@@ -16,6 +20,8 @@ from .models import Candidate
 
 USER_AGENT = "ai-daily/0.1 (+https://github.com/)"
 TIMEOUT = 10
+REPORT_TIMEZONE = ZoneInfo("Asia/Shanghai")
+logger = logging.getLogger(__name__)
 
 
 def load_sources(path):
@@ -63,7 +69,6 @@ def _page_date(soup: BeautifulSoup) -> datetime | None:
         "meta[property='og:published_time']",
         "meta[name='date']",
         "meta[name='pubdate']",
-        "time[datetime]",
     ):
         node = soup.select_one(selector)
         if node:
@@ -71,7 +76,35 @@ def _page_date(soup: BeautifulSoup) -> datetime | None:
             parsed = _parse_datetime(value)
             if parsed:
                 return parsed
-    return None
+
+    def structured_date(node):
+        if isinstance(node, list):
+            return next((value for child in node if (value := structured_date(child))), None)
+        if isinstance(node, dict):
+            types = node.get("@type", [])
+            if isinstance(types, str):
+                types = [types]
+            if any(kind in {"Article", "NewsArticle", "BlogPosting", "TechArticle", "Report"} for kind in types):
+                parsed = _parse_datetime(node.get("datePublished"))
+                if parsed:
+                    return parsed
+            return structured_date(node.get("@graph", []))
+        return None
+
+    for script in soup.select('script[type="application/ld+json"]'):
+        try:
+            parsed = structured_date(json.loads(script.get_text()))
+        except (TypeError, ValueError):
+            continue
+        if parsed:
+            return parsed
+    node = soup.select_one("time[datetime]")
+    return _parse_datetime(node.get("datetime")) if node else None
+
+
+def _local_date(value: datetime) -> date:
+    # Date-only / naive publication stamps use the date shown by the source.
+    return value.astimezone(REPORT_TIMEZONE).date() if value.tzinfo else value.date()
 
 
 def fetch_page(url: str) -> tuple[str, str, datetime | None]:
@@ -79,8 +112,10 @@ def fetch_page(url: str) -> tuple[str, str, datetime | None]:
         response = requests.get(url, headers={"User-Agent": USER_AGENT}, timeout=TIMEOUT)
         response.raise_for_status()
         soup = BeautifulSoup(response.text, "html.parser")
-        return response.url, _article_text(soup), _page_date(soup)
-    except requests.RequestException:
+        published_at = _page_date(soup)
+        return response.url, _article_text(soup), published_at
+    except requests.RequestException as exc:
+        logger.warning("Article fetch failed %s: %s", url, exc)
         return url, "", None
 
 
@@ -89,12 +124,13 @@ def _rss_candidates(source: dict, target_date: date, limit: int = 40) -> list[Ca
         response = requests.get(source["rss"], headers={"User-Agent": USER_AGENT}, timeout=TIMEOUT)
         response.raise_for_status()
         parsed = feedparser.parse(response.content)
-    except requests.RequestException:
+    except requests.RequestException as exc:
+        logger.warning("Source fetch failed %s: %s", source["name"], exc)
         return []
     result: list[Candidate] = []
     for entry in parsed.entries[:limit]:
         published = _parse_datetime(entry.get("published") or entry.get("updated"))
-        if published and published.date() != target_date:
+        if published and _local_date(published) != target_date:
             continue
         url = entry.get("link") or source["url"]
         result.append(
@@ -116,15 +152,24 @@ def _webpage_candidates(source: dict, target_date: date, limit: int = 20) -> lis
     try:
         response = requests.get(source["url"], headers={"User-Agent": USER_AGENT}, timeout=TIMEOUT)
         response.raise_for_status()
-    except requests.RequestException:
+    except requests.RequestException as exc:
+        logger.warning("Source fetch failed %s: %s", source["name"], exc)
         return []
     soup = BeautifulSoup(response.text, "html.parser")
+    for node in soup(["nav", "header", "footer"]):
+        node.decompose()
+    container = soup.find("main") or soup
+    source_host = urlsplit(response.url).hostname
     candidates: list[Candidate] = []
     seen: set[str] = set()
-    for link in soup.find_all("a", href=True):
+    for link in container.find_all("a", href=True):
         title = _clean_text(link.get_text(" ", strip=True))
-        url = urljoin(response.url, link["href"])
-        if not title or len(title) < 12 or url in seen or url.startswith(("javascript:", "mailto:", "#")):
+        url = urljoin(response.url, link["href"]).split("#", 1)[0]
+        parsed_url = urlsplit(url)
+        if (not title or len(title) < 12 or url in seen
+                or parsed_url.scheme not in {"http", "https"}
+                or parsed_url.hostname != source_host
+                or parsed_url.path.rstrip("/") == urlsplit(response.url).path.rstrip("/")):
             continue
         # Section landing pages rarely expose reliable dates. Keep candidates and let article verification/LLM decide.
         seen.add(url)
@@ -144,11 +189,24 @@ def _webpage_candidates(source: dict, target_date: date, limit: int = 20) -> lis
     return candidates
 
 
-def enrich_candidates(candidates: list[Candidate], max_articles: int = 60) -> list[Candidate]:
+def enrich_candidates(candidates: list[Candidate], max_articles: int = 120) -> list[Candidate]:
     # Landing pages can expose many links. Bound and parallelize article requests so a
     # single slow source cannot consume the whole GitHub Actions job.
-    selected = candidates[:max_articles]
-    enriched: list[Candidate] = []
+    # Round-robin sources so the first few configured sites cannot exhaust the
+    # budget. Within each source, dated RSS entries come before undated links.
+    groups: dict[str, deque] = {}
+    for candidate in sorted(candidates, key=lambda item: item.published_at is None):
+        groups.setdefault(candidate.source_name, deque()).append(candidate)
+    selected = []
+    while len(selected) < max_articles and any(groups.values()):
+        for group in groups.values():
+            if group:
+                selected.append(group.popleft())
+                if len(selected) == max_articles:
+                    break
+    logger.info("Selected %d/%d candidates across %d sources: %s",
+                len(selected), len(candidates), len(groups),
+                dict(Counter(candidate.source_name for candidate in selected)))
     with ThreadPoolExecutor(max_workers=12) as executor:
         futures = {executor.submit(fetch_page, candidate.url): candidate for candidate in selected}
         for future in as_completed(futures):
@@ -160,20 +218,27 @@ def enrich_candidates(candidates: list[Candidate], max_articles: int = 60) -> li
             candidate.url = final_url
             candidate.content = content
             candidate.published_at = candidate.published_at or published_at
-            enriched.append(candidate)
-    return enriched
+    return selected
 
 
 def collect_candidates(sources_path, target_date: date) -> list[Candidate]:
     candidates: list[Candidate] = []
     for source in load_sources(sources_path):
-        if source.get("rss"):
-            candidates.extend(_rss_candidates(source, target_date))
-        else:
-            candidates.extend(_webpage_candidates(source, target_date))
+        entries = _rss_candidates(source, target_date) if source.get("rss") else []
+        if not entries:
+            entries = _webpage_candidates(source, target_date)
+        logger.info("Source %s: %d candidates", source["name"], len(entries))
+        candidates.extend(entries)
     # URL/title de-duplication before expensive article fetches.
     unique: dict[str, Candidate] = {}
     for item in candidates:
         key = re.sub(r"\W+", " ", item.url.lower()).strip() or re.sub(r"\W+", " ", item.title.lower()).strip()
         unique.setdefault(key, item)
-    return enrich_candidates(list(unique.values()))
+    enriched = enrich_candidates(list(unique.values()))
+    dated_today = sum(bool(item.published_at and _local_date(item.published_at) == target_date) for item in enriched)
+    logger.info("Enriched %d candidates: %d dated %s; %d with article text",
+                len(enriched), dated_today, target_date, sum(bool(item.content) for item in enriched))
+    eligible = [item for item in enriched if not item.published_at or _local_date(item.published_at) == target_date]
+    logger.info("Excluded %d articles dated outside the report day; %d sent to AI",
+                len(enriched) - len(eligible), len(eligible))
+    return eligible

@@ -1,4 +1,5 @@
 name: Generate AI Daily Briefing
+run-name: "${{ inputs.site_only && 'Deploy Pages · existing reports only' || 'Generate AI daily report' }}"
 
 on:
   schedule:

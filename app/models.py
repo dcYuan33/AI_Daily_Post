@@ -26,7 +26,7 @@ class Candidate:
             "url": self.url,
             "published_at": self.published_at.isoformat() if self.published_at else None,
             "summary": self.summary[:2000],
-            "content_excerpt": self.content[:6000],
+            "content_excerpt": self.content[:3000],
             "topics": self.topics,
         }
 

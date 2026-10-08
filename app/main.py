@@ -35,6 +35,7 @@ def main() -> int:
     candidates = collect_candidates(settings.sources_config, target_date)
     logger.info("Collected %d candidates", len(candidates))
     report = generate_report(settings, target_date, candidates)
+    logger.info("Generated %d report items for %s", len(report.items), target_date)
     markdown_path, html_path = save_report(report, settings.root)
     build_site(report, settings.root)
     logger.info("Saved %s and %s", markdown_path, html_path)
