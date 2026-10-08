@@ -2,7 +2,7 @@
 
 无服务器的 AI 日报：由 GitHub Actions 每天运行，使用 `ai-weekly-briefing` 的 A/B/C 信源规则，Telegram 发送摘要，并通过 GitHub Pages 展示完整日报。
 
-最终交付方式是：**Telegram 只接收摘要，GitHub Pages 展示完整内容**。本项目不推送 Juya AI 日报，也不发送 Gmail 邮件。
+最终交付方式是：**Telegram 只接收摘要，GitHub Pages 展示完整内容**。
 
 ## 功能
 
@@ -80,7 +80,3 @@ GitHub Pages 使用 Actions 构建并部署 `site/`。每次日报生成后，Wo
 3. 上传 `site/` 为 Pages artifact；
 4. 部署到 GitHub Pages；
 5. Telegram 消息附带当天详情页链接。
-
-## TrendRadar 的参考边界
-
-本项目只参考 TrendRadar 的 RSS 配置、Telegram 通知分批、HTML 报告、环境变量和 GitHub Actions 思路，不依赖 TrendRadar 的热点榜单排序或主报告 Prompt。
